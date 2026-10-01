@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omveiculos"
+version = "0.1.0"
+description = "OM Veículos Leves: análise de consumo, emissões e desempenho de veículos leves no Brasil, sobre o OpenModelica"
+requires-python = ">=3.10"
+authors = [{ name = "Sofia Glyniadakis", email = "hamunami.7@gmail.com" }]
+license = { text = "OSMC-PL" }
+dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "numpy>=1.24", "pydantic>=2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+omveiculos = "omveiculos.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["omveiculos*"]
+
+[tool.setuptools.package-data]
+omveiculos = ["dados/ciclos/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

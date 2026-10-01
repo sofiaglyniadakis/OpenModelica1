@@ -1,9 +1,0 @@
-breathe
-gitpython
-natsort
-ompython >= 4.0
-pybtex
-PyGithub
-sphinx
-sphinxcontrib-bibtex
-sphinxcontrib-programoutput

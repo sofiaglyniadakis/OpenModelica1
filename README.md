@@ -1,3 +1,21 @@
+# OpenModelica — Veículos Leves (Brasil)
+
+Este repositório é uma versão do OpenModelica focada em **análise de veículos leves no contexto
+brasileiro**. A interface é o **[OM Veículos Leves](OMVeiculos/README.md)**: um editor moderno de
+*workflows* com blocos arrastáveis (combustível → motor → transmissão → veículo → ensaio → painel)
+que usa o compilador OpenModelica (`omc`) como motor de simulação.
+
+- Ensaio PBEV: urbano FTP-75 (NBR 6601) + estrada HWFET (NBR 7024), combinado 55/45.
+- Flex (gasolina C E30 × etanol hidratado com paridade de preço), diesel B15, GNV, híbridos e elétricos.
+- Custo mensal, MJ/km, CO₂ fóssil e CO₂e do poço à roda, autonomia, 0–100 km/h.
+- Biblioteca Modelica própria: [`OMVeiculos/modelica/VeiculosLevesBR`](OMVeiculos/modelica/VeiculosLevesBR).
+
+```bash
+cd OMVeiculos && ./iniciar.sh     # abre http://127.0.0.1:8000
+```
+
+---
+
 # OpenModelica [![License: OSMC-PL](https://img.shields.io/badge/license-OSMC--PL-lightgrey.svg)](OSMC-License.txt)
 
 [OpenModelica](https://openmodelica.org) is an open-source Modelica-based modeling and

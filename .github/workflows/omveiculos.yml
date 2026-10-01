@@ -1,0 +1,57 @@
+# Autora: Sofia Glyniadakis
+# Criado em: 2026-10-01
+name: OM Veículos Leves
+
+on:
+  push:
+    paths: ["OMVeiculos/**", ".github/workflows/omveiculos.yml"]
+  pull_request:
+    paths: ["OMVeiculos/**", ".github/workflows/omveiculos.yml"]
+
+jobs:
+  backend:
+    name: Backend (Python) + biblioteca Modelica no OpenModelica
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: OpenModelica (omc) via conda-forge
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: omenv
+          create-args: omcompiler python=3.12
+          cache-environment: true
+
+      - name: Dependências
+        run: pip install -e "OMVeiculos/backend[dev]"
+
+      - name: Testes (inclui a comparação OpenModelica x motor rápido)
+        working-directory: OMVeiculos/backend
+        run: |
+          export OMVEICULOS_OMC="$(command -v omc)"
+          omc --version
+          pytest -q
+
+      - name: Ciclos da biblioteca Modelica estão sincronizados com os CSVs
+        run: |
+          python3 OMVeiculos/scripts/gerar_ciclos_modelica.py
+          git diff --exit-code OMVeiculos/modelica/VeiculosLevesBR/Ciclos.mo
+
+  frontend:
+    name: Interface (TypeScript + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: OMVeiculos/frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: OMVeiculos/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
