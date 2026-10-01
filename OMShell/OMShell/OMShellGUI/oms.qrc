@@ -1,7 +1,0 @@
-<RCC>
-    <qresource>
-        <file>Resources/omshell-large.svg</file>
-        <file>Resources/OMS.ico</file>
-        <file alias="commands.xml">commands.xml</file>
-    </qresource>
-</RCC>

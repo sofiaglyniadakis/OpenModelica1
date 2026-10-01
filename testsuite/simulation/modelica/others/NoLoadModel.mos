@@ -1,8 +1,0 @@
-// status: correct
-
-buildModel(Modelica.Blocks.Examples.Filter); getErrorString();
-
-// Result:
-// {"Modelica.Blocks.Examples.Filter", "Modelica.Blocks.Examples.Filter_init.xml"}
-// ""
-// endResult
