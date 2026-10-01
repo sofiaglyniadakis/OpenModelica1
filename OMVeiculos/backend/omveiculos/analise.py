@@ -121,6 +121,7 @@ def indicadores_ciclo(res: ResultadoCiclo, pt: TremDeForca, eletricidade: Combus
     if pt.arquitetura in ("eletrico", "hibrido"):
         out["soc_inicial"] = _seguro(res.soc[0], 1)
         out["soc_final"] = _seguro(res.soc[-1], 1)
+    out["fluxos"] = fluxos_energia(res, pt, eletricidade)
     return out
 
 
@@ -228,3 +229,163 @@ def series(res: ResultadoCiclo, pt: TremDeForca, passo: int = 1) -> dict:
         out["p_eletrico_kw"] = np.round(res.p_eletrico_kw[s], 2).tolist()
         out["soc"] = np.round(res.soc[s], 2).tolist()
     return out
+
+
+# --- Análise exergética (tanque/tomada à roda) -------------------------------------------
+
+CATEGORIAS_EXERGIA = {
+    "motor_destruicao": "Motor: combustão e atrito",
+    "calor_rejeitado": "Calor rejeitado (escape + arrefecimento)",
+    "trem_eletrico": "Trem elétrico (motor, bateria, carregador)",
+    "transmissao": "Transmissão e embreagem",
+    "acessorios": "Acessórios e ar-condicionado",
+    "resistencias": "Aerodinâmica e rolamento",
+    "frenagem": "Freios e freio-motor",
+    "armazenada": "Armazenada (rampa, bateria)",
+}
+
+
+def fluxos_energia(res: ResultadoCiclo, pt: TremDeForca, eletricidade: Combustivel) -> dict:
+    """Energias do ciclo (MJ) nas interfaces do trem de força, base da análise exergética."""
+    mj = 1e-6
+    f = {k: v * mj for k, v in res.fluxos.items()}
+    f.update({k: v * mj for k, v in res.energias.items()})
+    f["motor_eixo"] = res.energia_motor_mec_j * mj
+    f["bateria"] = float(res.energia_bat_j[-1]) * mj
+    f["distancia_km"] = float(res.distancia_m[-1]) / 1000.0
+    f["arquitetura"] = pt.arquitetura
+    f["eta_transmissao"] = pt.transmissao.eficiencia
+    if pt.combustivel is not None:
+        kg = float(res.combustivel_kg[-1])
+        f["combustivel_pci"] = kg * pt.combustivel.pci
+        f["combustivel_ex"] = kg * pt.combustivel.exergia
+        f["renovavel_comb"] = pt.combustivel.fracao_renovavel
+    else:
+        f["combustivel_pci"] = f["combustivel_ex"] = f["renovavel_comb"] = 0.0
+    f["eta_carregador"] = pt.bateria.eficiencia_carregador if pt.bateria else 1.0
+    f["renovavel_rede"] = eletricidade.fracao_renovavel
+    return f
+
+
+def _fator_escape(t0: float, te: float) -> float:
+    """Fração exergética do calor sensível de um gás resfriado de te até t0 (K)."""
+    if te <= t0 + 1e-6:
+        return 0.0
+    return 1.0 - t0 / (te - t0) * math.log(te / t0)
+
+
+def exergia_ciclo(f: dict, t0_c: float = 25.0, t_escape_c: float = 527.0, t_arrefecimento_c: float = 90.0,
+                  fracao_escape: float = 0.5) -> dict:
+    """Balanço de exergia de um ciclo (MJ e MJ/km).
+
+    Hipóteses: estado morto a ``t0_c`` e 1 atm; exergia química dos combustíveis por
+    phi = ex/PCI; o calor rejeitado pelo motor (PCI do combustível menos o trabalho no eixo) é
+    dividido entre escapamento (gás resfriado de ``t_escape_c`` até ``t0_c``) e arrefecimento
+    (a ``t_arrefecimento_c``); toda perda mecânica, elétrica e de frenagem é exergia destruída;
+    a energia elétrica (bateria, rede) é exergia pura.
+    """
+    t0 = t0_c + 273.15
+    arq = f["arquitetura"]
+    ex_comb = f["combustivel_ex"]
+    w_motor = f["motor_eixo"]
+    q = max(f["combustivel_pci"] - w_motor, 0.0)
+    ex_escape = fracao_escape * q * _fator_escape(t0, t_escape_c + 273.15)
+    ex_arref = (1 - fracao_escape) * q * max(1 - t0 / (t_arrefecimento_c + 273.15), 0.0)
+    itens = {
+        "motor_destruicao": ex_comb - w_motor - ex_escape - ex_arref if ex_comb > 0 else 0.0,
+        "escape": ex_escape,
+        "arrefecimento": ex_arref,
+        "acessorios": f["acessorios"],
+        "motor_eletrico": (f["el_pos"] - f["em_pos"]) + (f["em_neg"] - f["el_neg"]),
+        "bateria": 0.0,
+        "carregador": 0.0,
+        "aerodinamica": f["aerodinamica"],
+        "rolamento": f["rolamento"],
+        "rampa": f["rampa"],
+    }
+    entrada_comb, entrada_el, renovavel, armazenada_bat = ex_comb, 0.0, ex_comb * f["renovavel_comb"], 0.0
+    if arq != "combustao":
+        itens["bateria"] = f["bateria"] - (f["el_pos"] - f["el_neg"] + f["acessorios"])
+        if arq == "eletrico":
+            entrada_el = f["bateria"] / f["eta_carregador"]
+            itens["carregador"] = entrada_el - f["bateria"]
+        elif f["bateria"] >= 0:
+            entrada_el = f["bateria"]  # híbrido: energia líquida retirada da bateria
+        else:
+            armazenada_bat = -f["bateria"]
+        renovavel += entrada_el * (f["renovavel_rede"] if arq == "eletrico" else f["renovavel_comb"])
+    eta_t = f["eta_transmissao"]
+    regen_roda = f["regen_eixo"] / eta_t
+    acc_mec = f["acessorios"] if arq == "combustao" else 0.0
+    carga = f["em_neg"] - f["regen_eixo"]  # recarga da bateria pelo motor a combustão (híbrido)
+    itens["transmissao"] = (w_motor - acc_mec) - carga + f["em_pos"] - f["roda_pos"] + (regen_roda - f["regen_eixo"])
+    itens["freios"] = f["frenagem"] - regen_roda
+    itens["armazenada_bateria"] = armazenada_bat
+
+    entrada = entrada_comb + entrada_el
+    entrada_energia = f["combustivel_pci"] + entrada_el
+    saida = sum(itens.values())
+    d = max(f["distancia_km"], 1e-9)
+    grupos = {
+        "motor_destruicao": itens["motor_destruicao"],
+        "calor_rejeitado": itens["escape"] + itens["arrefecimento"],
+        "trem_eletrico": itens["motor_eletrico"] + itens["bateria"] + itens["carregador"],
+        "transmissao": itens["transmissao"],
+        "acessorios": itens["acessorios"],
+        "resistencias": itens["aerodinamica"] + itens["rolamento"],
+        "frenagem": itens["freios"],
+        "armazenada": itens["rampa"] + itens["armazenada_bateria"],
+    }
+    return {
+        "entrada_mj_km": entrada / d,
+        "entrada_combustivel_mj_km": entrada_comb / d,
+        "entrada_eletrica_mj_km": entrada_el / d,
+        "trabalho_rodas_mj_km": f["roda_pos"] / d,
+        "eficiencia_2a_lei": f["roda_pos"] / entrada if entrada > 0 else None,
+        "eficiencia_1a_lei": f["roda_pos"] / entrada_energia if entrada_energia > 0 else None,
+        "fracao_renovavel": renovavel / entrada if entrada > 0 else None,
+        "itens_mj_km": {k: v / d for k, v in itens.items()},
+        "grupos_mj_km": {k: v / d for k, v in grupos.items()},
+        "fechamento": (entrada - saida) / entrada if entrada > 0 else 0.0,
+    }
+
+
+def _combinar_exergia(u: dict, e: dict) -> dict:
+    """Combina urbano e estrada por km (55/45), como no PBEV."""
+    def mix(a, b):
+        return PESO_URBANO * a + PESO_ESTRADA * b
+
+    out = {k: mix(u[k], e[k]) for k in ("entrada_mj_km", "entrada_combustivel_mj_km", "entrada_eletrica_mj_km",
+                                           "trabalho_rodas_mj_km")}
+    for chave in ("itens_mj_km", "grupos_mj_km"):
+        out[chave] = {k: mix(u[chave][k], e[chave][k]) for k in u[chave]}
+    ent = out["entrada_mj_km"]
+    out["eficiencia_2a_lei"] = out["trabalho_rodas_mj_km"] / ent if ent > 0 else None
+    eu, ee = u.get("eficiencia_1a_lei"), e.get("eficiencia_1a_lei")
+    out["eficiencia_1a_lei"] = None
+    if eu and ee:
+        en = mix(u["trabalho_rodas_mj_km"] / eu, e["trabalho_rodas_mj_km"] / ee)
+        out["eficiencia_1a_lei"] = out["trabalho_rodas_mj_km"] / en
+    ru, re_ = u.get("fracao_renovavel") or 0.0, e.get("fracao_renovavel") or 0.0
+    out["fracao_renovavel"] = mix(ru * u["entrada_mj_km"], re_ * e["entrada_mj_km"]) / ent if ent > 0 else None
+    return out
+
+
+def _arredondar(x):
+    if isinstance(x, dict):
+        return {k: _arredondar(v) for k, v in x.items()}
+    if isinstance(x, float):
+        return _seguro(x, 4)
+    return x
+
+
+def exergia_cenario(indicadores: dict, ensaio_tipo: str, params: dict) -> dict | None:
+    """Análise exergética de um cenário a partir dos indicadores de ciclo (com 'fluxos')."""
+    if ensaio_tipo == "ensaio_pbev":
+        u = exergia_ciclo(indicadores["urbano"]["fluxos"], **params)
+        e = exergia_ciclo(indicadores["estrada"]["fluxos"], **params)
+        return _arredondar({"urbano": u, "estrada": e, "principal": _combinar_exergia(u, e)})
+    if ensaio_tipo == "ciclo":
+        c = exergia_ciclo(indicadores["ciclo"]["fluxos"], **params)
+        return _arredondar({"ciclo": c, "principal": c})
+    return None

@@ -182,12 +182,35 @@ export interface Paridade {
   cenario_etanol: string;
 }
 
+export interface BalancoExergia {
+  entrada_mj_km: number;
+  entrada_combustivel_mj_km: number;
+  entrada_eletrica_mj_km: number;
+  trabalho_rodas_mj_km: number;
+  eficiencia_2a_lei: number | null;
+  eficiencia_1a_lei: number | null;
+  fracao_renovavel: number | null;
+  itens_mj_km: Record<string, number>;
+  grupos_mj_km: Record<string, number>;
+  fechamento?: number;
+}
+
+export interface ExergiaCenario {
+  principal: BalancoExergia;
+  urbano?: BalancoExergia;
+  estrada?: BalancoExergia;
+  ciclo?: BalancoExergia;
+}
+
 export interface Painel {
   id: string;
   nome: string;
+  tipo: "painel" | "exergia";
   km_mes: number;
   cenarios: string[];
   paridades: Paridade[];
+  exergia?: Record<string, ExergiaCenario>;
+  parametros?: Record<string, number>;
 }
 
 export interface Resultado {

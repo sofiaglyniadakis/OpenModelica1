@@ -41,7 +41,10 @@ TIPO_TRANSMISSAO = {"manual": 1, "automatica": 2, "cvt": 3, "redutor": 4}
 EXPERIMENTO = {"combustao": "CicloCombustao", "eletrico": "CicloEletrico", "hibrido": "CicloHibrido"}
 ARQUITETURA = {"combustao": 1, "eletrico": 2, "hibrido": 3}
 VARS_CICLO = ("distancia", "massaCombustivel", "energiaBateria", "soc", "marcha", "rpm", "pIce", "pEm",
-              "pRoda", "eAero", "eRol", "eRampa", "eFreio", "energiaMecanica", "tempoExcedido")
+              "pRoda", "eAero", "eRol", "eRampa", "eFreio", "energiaMecanica", "tempoExcedido",
+              "eAcc", "eRodaPos", "eEmPos", "eEmNeg", "eElPos", "eElNeg", "eRegenEixo")
+FLUXOS = {"acessorios": "eAcc", "roda_pos": "eRodaPos", "em_pos": "eEmPos", "em_neg": "eEmNeg",
+          "el_pos": "eElPos", "el_neg": "eElNeg", "regen_eixo": "eRegenEixo"}
 VARS_DESEMPENHO = ("vKmh", "t80", "t100", "t120", "vMaxKmh")
 TEMPO_DESEMPENHO = 90.0
 
@@ -296,6 +299,7 @@ def resultado_ciclo(dados: dict[str, np.ndarray], ciclo: mod_ciclos.Ciclo) -> Re
         p_roda_kw=inst["pRoda"] / 1000.0,
         energia_motor_mec_j=fim["energiaMecanica"],
         energias={"aerodinamica": fim["eAero"], "rolamento": fim["eRol"], "rampa": fim["eRampa"], "frenagem": fim["eFreio"]},
+        fluxos={k: float(dados[v][-1]) for k, v in FLUXOS.items()},
         tempo_excedido_s=fim["tempoExcedido"],
     )
 

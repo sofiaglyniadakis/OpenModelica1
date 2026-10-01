@@ -33,7 +33,7 @@ function Passos({ aoDestacar }: { aoDestacar: (cat: string | null) => void }) {
     return [
       temEntrada("veiculo") && temEntrada("transmissao"),
       ENSAIOS.some((t) => temEntrada(t)),
-      temEntrada("painel") || (resultado?.cenarios.length ?? 0) > 0,
+      temEntrada("painel") || temEntrada("exergia") || (resultado?.cenarios.length ?? 0) > 0,
     ];
   }, [nodes, edges, resultado]);
   const passos: [string, string][] = [

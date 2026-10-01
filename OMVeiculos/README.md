@@ -41,8 +41,10 @@ Bateria ─────▶ Motor elétrico ────┘
 | Desempenho | 0–100 km/h, retomada 80–120 km/h, velocidade máxima, peso/potência |
 | Painel de resultados | km/L (ou km/kWh), custo por km e **por mês**, MJ/km, **CO₂ fóssil** (etanol e biodiesel são biogênicos, como no PBEV), **CO₂e do poço à roda**, autonomia, paridade etanol × gasolina, gráficos no tempo e balanço de energia |
 
+| Análise exergética | 2ª lei da termodinâmica do tanque (ou tomada) à roda: eficiência exergética, destruição por componente e fração renovável da exergia |
+
 Modelos prontos no menu **Modelos**: *Etanol ou gasolina?*, *Flex × híbrido × elétrico*,
-*Desempenho 0-100*, *Calor e ar-condicionado* e *Em branco*.
+*Análise exergética*, *Desempenho 0-100*, *Calor e ar-condicionado* e *Em branco*.
 
 A interface tem desfazer/refazer, salvamento automático no navegador, importação/exportação do
 workflow em JSON, tema claro/escuro, modo **ao vivo** (recalcula a cada alteração) e exportação dos
@@ -125,6 +127,29 @@ Abordagem quasi-estática "para trás": o veículo segue exatamente o perfil do 
   balanço líquido da bateria.
 - **Desempenho**: aceleração plena com a melhor marcha a cada instante, inércia do motor refletida na
   roda, limite de aderência no eixo motriz.
+
+### Análise exergética
+
+![Destruição de exergia por componente](docs/exergia.png)
+
+O bloco **Análise exergética** faz o balanço de exergia de cada cenário, por km:
+
+- **Entrada**: exergia química do combustível (`φ·PCI`, com φ ≈ 1,10 para o etanol, ~1,07 para
+  gasolina e diesel, 1,04 para o GNV; misturas pela fração mássica) e/ou eletricidade (exergia pura,
+  medida na tomada nos elétricos).
+- **Motor a combustão**: o calor rejeitado (PCI − trabalho no eixo) é dividido entre escapamento
+  (gás resfriado de T_esc até T₀: `Q·[1 − T₀/(T_esc−T₀)·ln(T_esc/T₀)]`) e arrefecimento
+  (`Q·(1 − T₀/T_arref)`); o restante é destruição na combustão, atrito e bombeamento.
+- **Trem de força**: transmissão/embreagem, motor elétrico e inversor, bateria e carregador —
+  perdas mecânicas e elétricas são exergia destruída.
+- **Rodas**: o trabalho de tração é destruído em arrasto, rolamento e frenagem (descontada a parte
+  regenerada).
+- **Indicadores**: eficiência de 2ª lei (trabalho nas rodas ÷ exergia de entrada), de 1ª lei e
+  **fração renovável** da exergia (etanol, biodiesel e participação renovável da rede, 88 % por padrão).
+
+As energias nas interfaces são integradas pelos dois motores de cálculo (`fluxos` em Python,
+`eAcc`, `eRodaPos`, `eEmPos`… na biblioteca Modelica) e os testes conferem que o balanço fecha e
+que OpenModelica e Python concordam.
 
 ### Dados de referência (todos editáveis)
 

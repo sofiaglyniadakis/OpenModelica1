@@ -55,6 +55,15 @@ package Experimentos "Modelos simuláveis (usados pelo OM Veículos Leves)"
     Real pEm "potência mecânica do motor elétrico (W)";
     Real energiaMecanica(start = 0, fixed = true) "trabalho positivo do motor a combustão (J)";
     Real tempoExcedido(start = 0, fixed = true) "tempo em que a demanda excede o trem de força (s)";
+    Real pEl "potência elétrica do motor elétrico (W)";
+    // energias nas interfaces do trem de força, usadas na análise exergética (J)
+    Real eAcc(start = 0, fixed = true) "consumida pelos acessórios";
+    Real eRodaPos(start = 0, fixed = true) "trabalho de tração entregue às rodas";
+    Real eEmPos(start = 0, fixed = true) "trabalho entregue pelo motor elétrico";
+    Real eEmNeg(start = 0, fixed = true) "trabalho absorvido pelo motor elétrico (gerador)";
+    Real eElPos(start = 0, fixed = true) "energia elétrica consumida pelo motor elétrico";
+    Real eElNeg(start = 0, fixed = true) "energia elétrica gerada pelo motor elétrico";
+    Real eRegenEixo(start = 0, fixed = true) "trabalho de frenagem recuperado no eixo do motor elétrico";
   equation
     when {initial(), sample(1, 1)} then
       k = pre(k) + 1;
@@ -78,6 +87,11 @@ package Experimentos "Modelos simuláveis (usados pelo OM Veículos Leves)"
     der(eAero) = if parado then 0 else fAero*v;
     der(eRampa) = if parado then 0 else fRampa*v;
     der(eFreio) = noEvent(if not parado and f < 0 then -f*v else 0);
+    der(eRodaPos) = noEvent(if pRoda > 0 then pRoda else 0);
+    der(eEmPos) = noEvent(max(pEm, 0));
+    der(eEmNeg) = noEvent(max(-pEm, 0));
+    der(eElPos) = noEvent(max(pEl, 0));
+    der(eElNeg) = noEvent(max(-pEl, 0));
     annotation(Documentation(info = "<html>
 <p>O perfil de velocidade é linear em cada intervalo de 1 s (aceleração constante). No início
 de cada intervalo (<code>sample(1, 1)</code>) são calculadas as grandezas representativas usadas
@@ -113,6 +127,9 @@ pelas estratégias de troca de marcha e de gerenciamento do híbrido.</p></html>
     der(tempoExcedido) = noEvent(if not parado and f >= 0 and tIn > tDisp then 1 else 0);
     rpm = wE*30/pi;
     pEm = 0;
+    pEl = 0;
+    der(eAcc) = noEvent(if (parado and not motor.startStop) or (not parado and (f >= 0 or corte < 0.5)) then pAcc else 0);
+    der(eRegenEixo) = 0;
     soc = 0;
     der(energiaBateria) = 0;
     annotation(experiment(StopTime = 1874, Interval = 0.5));
@@ -124,7 +141,6 @@ pelas estratégias de troca de marcha e de gerenciamento do híbrido.</p></html>
     parameter Dados.Bateria bateria;
     Real tIn "N.m";
     Real pRegen "W";
-    Real pEl "potência elétrica do motor (W)";
     Real pBat "potência nos terminais da bateria (W)";
     Real pInt "potência interna da bateria (W)";
   initial equation
@@ -138,6 +154,8 @@ pelas estratégias de troca de marcha e de gerenciamento do híbrido.</p></html>
     pRegen = noEvent(if v*3.6 <= eletrico.vMinRegeneracao or soc >= bateria.socMax then 0 else max(max(pRoda*etaT*eletrico.fracaoRegeneracao, -eletrico.potenciaMax), -Funcoes.torqueEletrico(wIn, eletrico)*wIn));
     pEm = noEvent(if parado then 0 elseif f >= 0 then tIn*wIn else pRegen);
     pEl = noEvent(if pEm >= 0 then pEm/eletrico.eficiencia else pEm*eletrico.eficiencia);
+    der(eAcc) = pAcc;
+    der(eRegenEixo) = noEvent(if not parado and f < 0 then -pRegen else 0);
     pBat = pEl + pAcc;
     pInt = noEvent(if pBat >= 0 then pBat/bateria.eficiencia else pBat*bateria.eficiencia);
     der(energiaBateria) = pInt;
@@ -173,7 +191,6 @@ pelas estratégias de troca de marcha e de gerenciamento do híbrido.</p></html>
     Real tEm "N.m";
     Real tIce "N.m";
     Real pRegen "W";
-    Real pEl "W";
     Real pBat "W";
     Real pInt "W";
     Real pFuel "W";
@@ -199,6 +216,8 @@ pelas estratégias de troca de marcha e de gerenciamento do híbrido.</p></html>
     pRegen = noEvent(if v*3.6 <= eletrico.vMinRegeneracao or soc >= bateria.socMax then 0 else max(max(pRoda*etaT*eletrico.fracaoRegeneracao, -eletrico.potenciaMax), -tEmDisp*wIn));
     pEm = noEvent(if parado then 0 elseif f >= 0 then tEm*wIn else pRegen);
     pEl = noEvent(if pEm >= 0 then pEm/eletrico.eficiencia else pEm*eletrico.eficiencia);
+    der(eAcc) = pAcc;
+    der(eRegenEixo) = noEvent(if not parado and f < 0 then -pRegen else 0);
     pBat = pEl + pAcc;
     pInt = noEvent(if pBat >= 0 then pBat/bateria.eficiencia else pBat*bateria.eficiencia);
     der(energiaBateria) = pInt;

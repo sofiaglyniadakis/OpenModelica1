@@ -11,6 +11,7 @@ import {
   Fuel,
   Gauge,
   Route,
+  Thermometer,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const MAPA: Record<string, LucideIcon> = {
   route: Route,
   gauge: Gauge,
   chart: ChartColumn,
+  thermo: Thermometer,
 };
 
 export function IconeBloco({ nome, cor, tamanho = 30 }: { nome: string; cor: string; tamanho?: number }) {

@@ -36,3 +36,17 @@ def test_openmodelica_confere_com_motor_rapido(modelos, modelo):
             _comparar(ia["ciclo"], ib["ciclo"], ("km_por_unidade", "mj_km"), 0.005)
         else:
             _comparar(ia, ib, ("t_0_100_s", "t_80_120_s", "v_max_kmh"), 0.01)
+
+
+def test_exergia_openmodelica_confere_com_motor_rapido(modelos):
+    rapido = workflow.executar(modelos["exergia"])
+    omc = workflow.executar(modelos["exergia"], modelica.MotorOpenModelica(OMC))
+    assert omc["erros"] == []
+    pa = next(p for p in rapido["paineis"] if p["tipo"] == "exergia")["exergia"]
+    pb = next(p for p in omc["paineis"] if p["tipo"] == "exergia")["exergia"]
+    assert pa.keys() == pb.keys()
+    for k in pa:
+        a, b = pa[k]["principal"], pb[k]["principal"]
+        assert b["eficiencia_2a_lei"] == pytest.approx(a["eficiencia_2a_lei"], rel=0.01)
+        for g, v in a["grupos_mj_km"].items():
+            assert b["grupos_mj_km"][g] == pytest.approx(v, rel=0.03, abs=0.003), (k, g)

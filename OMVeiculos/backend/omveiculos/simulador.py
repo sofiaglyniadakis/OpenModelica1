@@ -76,6 +76,7 @@ class ResultadoCiclo:
     p_roda_kw: np.ndarray
     energia_motor_mec_j: float = 0.0  # trabalho positivo no eixo do motor a combustão
     energias: dict = field(default_factory=dict)  # balanço de energia na roda (J)
+    fluxos: dict = field(default_factory=dict)  # energias nas interfaces do trem de força (J), p/ análise exergética
     tempo_excedido_s: float = 0.0  # tempo em que o trem de força não atende a demanda
 
 
@@ -145,6 +146,7 @@ def simular_ciclo(pt: TremDeForca, ciclo: Ciclo, amb: Ambiente, n_sub: int = N_S
     dist = comb = ebat = 0.0
     e_mec = excedido = 0.0
     e_aero = e_rol = e_rampa = e_freio = 0.0
+    fx = dict.fromkeys(("acessorios", "roda_pos", "em_pos", "em_neg", "el_pos", "el_neg", "regen_eixo"), 0.0)
     serie["soc"][0] = soc
 
     def regen(p_mec_roda: float, vt: float, w_m: float, soc_atual: float) -> float:
@@ -184,12 +186,14 @@ def simular_ciclo(pt: TremDeForca, ciclo: Ciclo, amb: Ambiente, n_sub: int = N_S
             w_e = 0.0
             p_em = 0.0  # potência mecânica do motor elétrico
             p_el = 0.0  # potência elétrica do motor elétrico
+            acc_no_motor = False  # acessórios supridos pelo motor a combustão neste instante
             if parado:
                 p_roda = 0.0
                 if arq == "combustao" and not motor.start_stop:
                     w_e = w_lenta
                     p_ice = p_acc
                     p_f = p_f_lenta
+                    acc_no_motor = True
             else:
                 f_rol, f_aero, f_rampa = veh.forcas(vt, amb)
                 f = m_eq * a + f_rol + f_aero + f_rampa
@@ -211,6 +215,7 @@ def simular_ciclo(pt: TremDeForca, ciclo: Ciclo, amb: Ambiente, n_sub: int = N_S
                             if t_ice > t_disp:
                                 excedido += dt
                             p_ice = t_ice * w_e + p_acc
+                            acc_no_motor = True
                         else:
                             t_ice = min(t_in + p_carga / w_e, t_disp)
                             t_em = t_in - t_ice
@@ -239,11 +244,23 @@ def simular_ciclo(pt: TremDeForca, ciclo: Ciclo, amb: Ambiente, n_sub: int = N_S
                             w_e = w_lenta
                             p_ice = p_acc
                             p_f = p_f_lenta
+                            acc_no_motor = True
                     else:
                         p_em = regen(p_roda, vt, w_in, soc)
+                        fx["regen_eixo"] += -p_em * dt
                 if usa_el:
                     p_el = p_em / eta_m if p_em >= 0 else p_em * eta_m
 
+            if p_roda > 0:
+                fx["roda_pos"] += p_roda * dt
+            if acc_no_motor or usa_el:
+                fx["acessorios"] += p_acc * dt
+            if p_em >= 0:
+                fx["em_pos"] += p_em * dt
+                fx["el_pos"] += p_el * dt
+            else:
+                fx["em_neg"] += -p_em * dt
+                fx["el_neg"] += -p_el * dt
             if usa_el:
                 p_bat = p_el + p_acc
                 p_int = p_bat / eta_b if p_bat >= 0 else p_bat * eta_b
@@ -291,6 +308,7 @@ def simular_ciclo(pt: TremDeForca, ciclo: Ciclo, amb: Ambiente, n_sub: int = N_S
         p_roda_kw=serie["pr"],
         energia_motor_mec_j=e_mec,
         energias=energias,
+        fluxos=fx,
         tempo_excedido_s=excedido,
     )
 

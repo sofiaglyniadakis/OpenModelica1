@@ -106,6 +106,8 @@ BLOCOS = [
             num("preco_kwh", "Preço da energia", PRECOS_REFERENCIA["eletricidade"], "R$/kWh", 0, 5, 0.01, grupo="Custo"),
             num("fator_emissao", "Fator de emissão da rede", 40, "gCO₂/kWh", 0, 1000, 1, grupo="Custo",
                 ajuda="Ordem de grandeza do fator médio do SIN (MCTI) em anos recentes - atualize."),
+            num("fracao_renovavel", "Participação renovável da rede", 88, "%", 0, 100, 1, grupo="Custo", escala=PCT,
+                ajuda="Usada na fração renovável da exergia (análise exergética)."),
             num("v_max_eletrico", "Vel. máx. modo elétrico", 50, "km/h", 0, 200, 1, grupo="Estratégia híbrida"),
             num("p_max_eletrico", "Potência máx. modo elétrico", 12, "kW", 0, 200, 0.5, grupo="Estratégia híbrida"),
             num("soc_alvo", "SOC alvo", 55, "%", 0, 100, 1, grupo="Estratégia híbrida"),
@@ -330,6 +332,27 @@ BLOCOS = [
     },
 ]
 
+BLOCOS.append({
+    "tipo": "exergia",
+    "categoria": "Análise",
+    "nome": "Análise exergética",
+    "icone": "thermo",
+    "cor": "#db2777",
+    "descricao": "2ª lei da termodinâmica: onde a exergia do combustível ou da eletricidade é destruída, do tanque (ou tomada) à roda.",
+    "entradas": [{"id": "resultado", "tipo": "resultado", "rotulo": "Resultados", "multiplas": True}],
+    "saidas": [],
+    "parametros": [
+        num("t0_c", "Temperatura de referência (T₀)", 25, "°C", -10, 50, 1, grupo="Estado morto",
+            ajuda="Ambiente para onde o calor é rejeitado."),
+        num("t_escape_c", "Temperatura do escapamento", 527, "°C", 150, 1000, 5, grupo="Motor a combustão",
+            ajuda="Temperatura média dos gases na saída do motor (~800 K em carga parcial)."),
+        num("t_arrefecimento_c", "Temperatura do arrefecimento", 90, "°C", 40, 130, 1, grupo="Motor a combustão"),
+        num("fracao_escape", "Calor rejeitado pelo escapamento", 50, "%", 0, 100, 1, grupo="Motor a combustão", escala=PCT,
+            ajuda="Parte do calor do motor que sai nos gases (o restante vai ao arrefecimento e ao ambiente)."),
+    ],
+    "presets": [{"nome": "Análise exergética", "params": {}}],
+})
+
 BLOCOS_POR_TIPO = {b["tipo"]: b for b in BLOCOS}
 
 
@@ -452,9 +475,21 @@ def _modelos() -> list[dict]:
             _aresta("cic", "pai", "resultado"),
         ],
     }
+    exergia = {
+        "id": "exergia",
+        "nome": "Análise exergética",
+        "descricao": "2ª lei: onde a exergia é destruída no flex (gasolina e etanol), no híbrido e no elétrico.",
+        "nos": [n for n in deepcopy(tecnologias["nos"]) if n["id"] != "pai"] + [
+            _no("gas", "combustivel", "Gasolina C (E30)", 0, -170),
+            _no("exe", "exergia", "Análise exergética", 1450, 300),
+        ],
+        "arestas": [a for a in tecnologias["arestas"] if a["destino"] != "pai"] + [
+            _aresta("gas", "mot", "combustivel"), _aresta("pbev", "exe", "resultado"),
+        ],
+    }
     branco = {"id": "em-branco", "nome": "Em branco", "descricao": "Comece do zero arrastando blocos da paleta.",
               "nos": [], "arestas": []}
-    return [flex, tecnologias, desempenho, ar, branco]
+    return [flex, tecnologias, exergia, desempenho, ar, branco]
 
 
 def catalogo() -> dict:

@@ -32,10 +32,14 @@ from dataclasses import asdict, dataclass
 
 # --- Componentes puros -------------------------------------------------------
 # densidade [kg/L], PCI [MJ/kg], fração mássica de carbono [-], gCO2e/MJ poço-roda
-GASOLINA_A = dict(densidade=0.745, pci=43.5, carbono=0.866, wtw=87.4)
-ETANOL_ANIDRO = dict(densidade=0.791, pci=26.8, carbono=24.02 / 46.07, wtw=27.0)
-DIESEL_A = dict(densidade=0.840, pci=42.6, carbono=0.862, wtw=86.5)
-BIODIESEL = dict(densidade=0.880, pci=37.2, carbono=0.770, wtw=30.0)
+# exergia química padrão [MJ/kg]: etanol 1357,7 kJ/mol (Szargut); gasolina, diesel e biodiesel
+# por phi = ex/PCI ~ 1,07 (correlação de Szargut para hidrocarbonetos líquidos); GNV phi ~ 1,04
+GASOLINA_A = dict(densidade=0.745, pci=43.5, carbono=0.866, wtw=87.4, exergia=46.5)
+ETANOL_ANIDRO = dict(densidade=0.791, pci=26.8, carbono=24.02 / 46.07, wtw=27.0, exergia=29.47)
+DIESEL_A = dict(densidade=0.840, pci=42.6, carbono=0.862, wtw=86.5, exergia=45.6)
+BIODIESEL = dict(densidade=0.880, pci=37.2, carbono=0.770, wtw=30.0, exergia=39.8)
+EXERGIA_AGUA = 0.05  # MJ/kg, água líquida
+FRACAO_RENOVAVEL_REDE = 0.88  # participação renovável típica da matriz elétrica brasileira (EPE)
 CALOR_VAPORIZACAO_AGUA = 2.44  # MJ/kg, penaliza o PCI do etanol hidratado
 CO2_POR_C = 44.01 / 12.011
 
@@ -64,6 +68,12 @@ class Combustivel:
     wtw: float  # gCO2e/MJ, poço à roda
     fracao_etanol_vol: float  # fração volumétrica de etanol (efeito na eficiência do motor flex)
     preco: float  # R$ por unidade comercial
+    exergia: float = 0.0  # exergia química [MJ/kg] (eletricidade: 3,6 MJ/kWh)
+    fracao_renovavel: float = 0.0  # fração renovável da exergia (etanol, biodiesel, fontes renováveis)
+
+    @property
+    def exergia_por_unidade(self) -> float:
+        return self.densidade * self.exergia
 
     @property
     def energia_por_unidade(self) -> float:
@@ -91,7 +101,10 @@ def gasolina_c(teor_etanol: float = 30.0, preco: float | None = None) -> Combust
     dens, pci, w_et, wtw = _mistura_volumetrica(GASOLINA_A, ETANOL_ANIDRO, x)
     fossil = (1 - w_et) * GASOLINA_A["carbono"] * CO2_POR_C
     bio = w_et * ETANOL_ANIDRO["carbono"] * CO2_POR_C
+    ex = (1 - w_et) * GASOLINA_A["exergia"] + w_et * ETANOL_ANIDRO["exergia"]
     return Combustivel(
+        exergia=ex,
+        fracao_renovavel=w_et * ETANOL_ANIDRO["exergia"] / ex,
         tipo="gasolina",
         nome=f"Gasolina C (E{teor_etanol:g})",
         unidade="L",
@@ -112,7 +125,10 @@ def etanol_hidratado(teor_massico: float = 93.5, preco: float | None = None) -> 
     pci = w * ETANOL_ANIDRO["pci"] - (1 - w) * CALOR_VAPORIZACAO_AGUA
     x_vol = w * dens / ETANOL_ANIDRO["densidade"]
     bio = w * ETANOL_ANIDRO["carbono"] * CO2_POR_C
+    ex = w * ETANOL_ANIDRO["exergia"] + (1 - w) * EXERGIA_AGUA
     return Combustivel(
+        exergia=ex,
+        fracao_renovavel=1.0,
         tipo="etanol",
         nome="Etanol hidratado (EHC)",
         unidade="L",
@@ -131,7 +147,10 @@ def diesel_b(teor_biodiesel: float = 15.0, preco: float | None = None) -> Combus
     dens, pci, w_bio, wtw = _mistura_volumetrica(DIESEL_A, BIODIESEL, x)
     fossil = (1 - w_bio) * DIESEL_A["carbono"] * CO2_POR_C
     bio = w_bio * BIODIESEL["carbono"] * CO2_POR_C
+    ex = (1 - w_bio) * DIESEL_A["exergia"] + w_bio * BIODIESEL["exergia"]
     return Combustivel(
+        exergia=ex,
+        fracao_renovavel=w_bio * BIODIESEL["exergia"] / ex,
         tipo="diesel",
         nome=f"Diesel S10 (B{teor_biodiesel:g})",
         unidade="L",
@@ -149,6 +168,8 @@ def gnv(preco: float | None = None) -> Combustivel:
     # gás natural veicular, m3 a 20 °C e 1 atm
     co2 = 2.66
     return Combustivel(
+        exergia=47.5 * 1.04,
+        fracao_renovavel=0.0,
         tipo="gnv",
         nome="GNV",
         unidade="m³",
@@ -162,8 +183,12 @@ def gnv(preco: float | None = None) -> Combustivel:
     )
 
 
-def eletricidade(fator_emissao_g_kwh: float = 40.0, preco: float | None = None) -> Combustivel:
+def eletricidade(
+    fator_emissao_g_kwh: float = 40.0, preco: float | None = None, fracao_renovavel: float = FRACAO_RENOVAVEL_REDE
+) -> Combustivel:
     return Combustivel(
+        exergia=3.6,
+        fracao_renovavel=fracao_renovavel,
         tipo="eletricidade",
         nome="Eletricidade (rede SIN)",
         unidade="kWh",
@@ -190,5 +215,7 @@ def criar(tipo: str, params: dict | None = None) -> Combustivel:
     if tipo == "gnv":
         return gnv(preco)
     if tipo == "eletricidade":
-        return eletricidade(float(p.get("fator_emissao", 40.0)), preco)
+        return eletricidade(
+            float(p.get("fator_emissao", 40.0)), preco, float(p.get("fracao_renovavel", FRACAO_RENOVAVEL_REDE))
+        )
     raise ValueError(f"Tipo de combustível desconhecido: {tipo}")

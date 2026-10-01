@@ -18,6 +18,7 @@ import { corSerie } from "../lib/cores";
 import { NOME_ARQ, NOME_ENERGETICO, num, reais } from "../lib/formato";
 import { resultadoDesatualizado, useEstado } from "../lib/store";
 import type { Cenario, IndCiclo, IndCombinado, IndDesempenho, IndPBEV, Painel, Paridade, Serie } from "../lib/tipos";
+import { VistaExergia } from "./Exergia";
 import { BarraEmpilhada, BarrasCenarios, LinhasTempo, useTemaGrafico } from "./graficos";
 
 type CenarioCor = Cenario & { cor: string };
@@ -587,7 +588,12 @@ export function Resultados() {
           {!resultado && !erroSimulacao && (
             <div className="vazio-resultados">Monte um workflow e clique em Simular para ver consumo, custos, CO₂ e desempenho.</div>
           )}
-          {painel && <VistaPainel painel={painel} cenarios={cenarios} />}
+          {painel &&
+            (painel.tipo === "exergia" ? (
+              <VistaExergia painel={painel} cenarios={cenarios} />
+            ) : (
+              <VistaPainel painel={painel} cenarios={cenarios} />
+            ))}
         </div>
       )}
     </section>

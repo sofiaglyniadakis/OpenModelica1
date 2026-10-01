@@ -147,7 +147,7 @@ def converter_bateria(no: No) -> tuple[Bateria, Hibrido, combustiveis.Combustive
     if not (0 <= bat.soc_min < bat.soc_max <= 100):
         raise ErroWorkflow(f"{no.rotulo}: SOC mínimo deve ser menor que o máximo.")
     hib = _preencher(Hibrido, no)
-    ele = combustiveis.eletricidade(no.p("fator_emissao"), no.p("preco_kwh"))
+    ele = combustiveis.eletricidade(no.p("fator_emissao"), no.p("preco_kwh"), no.p("fracao_renovavel"))
     return bat, hib, ele
 
 
@@ -383,9 +383,9 @@ def _principal(cen: dict) -> dict | None:
 
 def _paineis(grafo: Grafo, cenarios: list[dict], diag: Diagnostico) -> list[dict]:
     paineis = []
-    nos_painel = grafo.do_tipo("painel")
-    if not nos_painel and cenarios:
-        nos_painel = [No("__todos__", "painel", "Todos os resultados", {})]
+    nos_painel = grafo.do_tipo("painel", "exergia")
+    if not grafo.do_tipo("painel") and cenarios:
+        nos_painel = [No("__todos__", "painel", "Todos os resultados", {})] + nos_painel
     for p in nos_painel:
         if p.id == "__todos__":
             ensaios = {c["ensaio_id"] for c in cenarios}
@@ -394,6 +394,24 @@ def _paineis(grafo: Grafo, cenarios: list[dict], diag: Diagnostico) -> list[dict
             if not ensaios:
                 diag.aviso(p, f"'{p.rotulo}' não recebe nenhum resultado.")
         selec = [c for c in cenarios if c["ensaio_id"] in ensaios]
+        if p.tipo == "exergia":
+            params = {k: p.p(k) for k in ("t0_c", "t_escape_c", "t_arrefecimento_c", "fracao_escape")}
+            exergia = {}
+            for c in selec:
+                r = analise.exergia_cenario(c["indicadores"], c["ensaio_tipo"], params)
+                if r is not None:
+                    exergia[c["id"]] = r
+            paineis.append({
+                "id": p.id,
+                "nome": p.rotulo,
+                "tipo": "exergia",
+                "km_mes": 0,
+                "cenarios": list(exergia),
+                "paridades": [],
+                "exergia": exergia,
+                "parametros": params,
+            })
+            continue
         km_mes = p.p("km_mes")
         paineis.append({
             "id": p.id,
@@ -401,6 +419,7 @@ def _paineis(grafo: Grafo, cenarios: list[dict], diag: Diagnostico) -> list[dict
             "km_mes": km_mes,
             "cenarios": [c["id"] for c in selec],
             "paridades": _paridades(selec, km_mes),
+            "tipo": "painel",
         })
     return paineis
 

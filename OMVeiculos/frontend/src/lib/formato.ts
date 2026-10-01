@@ -98,6 +98,8 @@ export function resumoBloco(tipo: string, p: Params, nomeCiclo?: (id: string) =>
       return ["0–100 · 80–120", "vel. máxima"];
     case "painel":
       return [`${num(n(p, "km_mes"), 0)} km/mês`];
+    case "exergia":
+      return [`T₀ ${num(n(p, "t0_c"), 0)} °C`, `escape ${num(n(p, "t_escape_c"), 0)} °C`, "2ª lei"];
     default:
       return [];
   }
